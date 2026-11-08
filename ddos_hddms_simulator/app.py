@@ -69,15 +69,16 @@ if df["detected_attack"].any():
 else:
     st.success("No suspicious periods were detected with the current settings.")
 
-cols = st.columns(4)
-for col, label, value in zip(cols, ["Total requests", "Flagged seconds", "Requests rate-limited", "Legitimate requests served"],
-    [int(df.requests.sum()), int(df.detected_attack.sum()), int(df.blocked_requests.sum()), int(df.legitimate_served.sum())]):
+cols = st.columns(5)
+for col, label, value in zip(cols, ["Total requests", "Simulated illegitimate requests", "Flagged seconds", "Requests rate-limited", "Legitimate requests served"],
+    [int(df.requests.sum()), int(df.attack_requests.sum()), int(df.detected_attack.sum()), int(df.blocked_requests.sum()), int(df.legitimate_served.sum())]):
     col.metric(label, f"{value:,}")
 
 left, right = st.columns(2)
 with left:
     st.subheader("1. Traffic monitoring")
     traffic = df.melt(id_vars=["second"], value_vars=["legitimate_requests", "attack_requests"], var_name="traffic_type", value_name="traffic_requests")
+    traffic["traffic_type"] = traffic["traffic_type"].map({"legitimate_requests": "Legitimate traffic", "attack_requests": "Simulated illegitimate traffic"})
     st.plotly_chart(px.area(traffic, x="second", y="traffic_requests", color="traffic_type"), use_container_width=True)
 with right:
     st.subheader("2. Detection decisions")
