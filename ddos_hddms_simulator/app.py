@@ -63,7 +63,46 @@ if run or "simulation_df" not in st.session_state:
 
 df = st.session_state["simulation_df"]
 metrics = calculate_metrics(df)
-st.subheader(f"Scenario: {st.session_state['scenario']}")
+# Match the deterministic attack window used by generate_scenario().
+sim_duration = len(df)
+window_start = max(5, sim_duration // 3)
+window_end = min(sim_duration - 3, window_start + max(10, sim_duration // 3))
+selected_scenario = st.session_state["scenario"]
+
+st.subheader("Simulation timeline")
+if selected_scenario in ("DDoS attack", "Mixed traffic"):
+    attack_seconds = int(df["attack_requests"].gt(0).sum())
+    t1, t2, t3 = st.columns(3)
+    t1.metric("Attack begins", f"{window_start}s")
+    t2.metric("Attack ends", f"{window_end - 1}s")
+    t3.metric("Attack duration", f"{window_end - window_start}s")
+    st.info(
+        f"Scheduled {st.session_state['attack_type']} window: seconds "
+        f"{window_start}–{window_end - 1}. The event log below contains the "
+        "whole generated run; use the attack-window filter to jump to these rows."
+    )
+    phases = pd.DataFrame([
+        {"phase": "Normal traffic", "start": 0, "length": window_start},
+        {"phase": "Simulated attack", "start": window_start, "length": window_end - window_start},
+        {"phase": "Recovery / normal traffic", "start": window_end, "length": sim_duration - window_end},
+    ])
+    timeline = px.bar(
+        phases, x="length", y="phase", orientation="h", base="start",
+        text="length", title="When each phase occurs (seconds)",
+        labels={"length": "Duration (seconds)", "phase": ""},
+    )
+    timeline.update_layout(showlegend=False, xaxis_range=[0, sim_duration], yaxis_title="")
+    st.plotly_chart(timeline, use_container_width=True)
+    if attack_seconds:
+        st.success(f"Generated {int(df['attack_requests'].sum()):,} simulated illegitimate requests across {attack_seconds} seconds.")
+    else:
+        st.warning("No attack requests appear in this run. Check that the selected scenario is DDoS attack or Mixed traffic, then rerun.")
+elif selected_scenario == "Legitimate flash crowd":
+    st.info(f"Legitimate flash crowd is scheduled from second {window_start} to {window_end - 1}. This scenario intentionally has zero attack_requests.")
+else:
+    st.success("Normal-traffic scenario selected. No illegitimate requests are scheduled.")
+
+st.subheader(f"Scenario: {selected_scenario}")
 if df["detected_attack"].any():
     st.warning(f"Suspicious activity detected in {int(df['detected_attack'].sum())} of {len(df)} observed seconds.")
 else:
@@ -105,7 +144,26 @@ a.metric("Mean ML attack probability", f"{df.ml_attack_probability.mean():.1%}")
 b.metric("ML test-set F1-score", f"{ml.get('f1_score', 0):.1%}")
 b.metric("Independent test observations", f"{ml.get('testing_observations', 0):,}")
 st.subheader("7. Simulation event log")
-st.dataframe(df, use_container_width=True, height=360)
+event_log = df.copy()
+if selected_scenario in ("DDoS attack", "Mixed traffic"):
+    event_log["traffic_phase"] = "Normal traffic"
+    event_log.loc[event_log["second"].between(window_start, window_end - 1), "traffic_phase"] = "Simulated attack"
+    event_log.loc[event_log["second"] >= window_end, "traffic_phase"] = "Recovery / normal traffic"
+elif selected_scenario == "Legitimate flash crowd":
+    event_log["traffic_phase"] = "Normal traffic"
+    event_log.loc[event_log["second"].between(window_start, window_end - 1), "traffic_phase"] = "Legitimate flash crowd"
+else:
+    event_log["traffic_phase"] = "Normal traffic"
+event_filter = st.selectbox(
+    "Filter event log",
+    ["All seconds", "Attack window only", "Normal / recovery only"],
+)
+if event_filter == "Attack window only":
+    event_log = event_log[event_log["traffic_phase"] == "Simulated attack"]
+elif event_filter == "Normal / recovery only":
+    event_log = event_log[event_log["traffic_phase"] != "Simulated attack"]
+st.caption(f"Showing {len(event_log):,} of {len(df):,} simulated seconds.")
+st.dataframe(event_log, use_container_width=True, height=360)
 st.download_button("⬇ Download results (CSV)", df.to_csv(index=False).encode("utf-8"), "hddms_results.csv", "text/csv")
 with st.expander("Methodology and limitations"):
     st.markdown("""
