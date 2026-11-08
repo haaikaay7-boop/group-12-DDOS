@@ -77,8 +77,8 @@ for col, label, value in zip(cols, ["Total requests", "Flagged seconds", "Reques
 left, right = st.columns(2)
 with left:
     st.subheader("1. Traffic monitoring")
-    traffic = df.melt(id_vars=["second"], value_vars=["legitimate_requests", "attack_requests"], var_name="traffic_type", value_name="requests")
-    st.plotly_chart(px.area(traffic, x="second", y="requests", color="traffic_type"), use_container_width=True)
+    traffic = df.melt(id_vars=["second"], value_vars=["legitimate_requests", "attack_requests"], var_name="traffic_type", value_name="traffic_requests")
+    st.plotly_chart(px.area(traffic, x="second", y="traffic_requests", color="traffic_type"), use_container_width=True)
 with right:
     st.subheader("2. Detection decisions")
     plot = df.assign(decision=df.detected_attack.map({True:"Flagged", False:"Not flagged"}))
